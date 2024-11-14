@@ -1,80 +1,60 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.InputSystem;
+using static UnityEngine.GraphicsBuffer;
 
-public class Player : MonoBehaviour
+public class MovementPlayer : MonoBehaviour
 {
-    [SerializeField] private GameObject playerMovingParticles;
+    [SerializeField] private float speed = 5f;       // Kecepatan gerakan
+    [SerializeField] private float jumpForce = 5f;   // Kekuatan lompatan
+    [SerializeField] private float rotationSpeed; // Kecepatan rotasi dalam derajat per detik
+    private Rigidbody _rigidBody;
+    [SerializeField] private bool isGrounded;
 
-    private PlayerInput playerInput;
-    private CharacterController characterController;
-    private Animator animator;
-
-    private float walkSpeed = 5f;
-    private float runSpeed = 8f;
-
-    private bool isWalking;
-    private bool isRunning;
-
-    private Vector2 move;
-
-
-    private void Awake()
+    private void Start()
     {
-        playerInput = new PlayerInput();
-        animator = GetComponent<Animator>();
-        characterController = GetComponent<CharacterController>();
-
-    }
-
-    public void HandleAnimation()
-    {
-        if (move != Vector2.zero)
-        {
-            animator.SetBool("IsWalking", true);
-            if (Input.GetKey(KeyCode.Space))
-            {
-                animator.SetBool("IsRunning", true);
-                playerMovingParticles.SetActive(true);
-            }
-            else
-            {
-                playerMovingParticles.SetActive(false);
-                animator.SetBool("IsRunning", false);
-            }
-        }
-        else
-        {
-            animator.SetBool("IsWalking", false);
-            animator.SetBool("IsRunning", false);
-        }
+        _rigidBody = GetComponent<Rigidbody>();
+        // Opsional: Membekukan rotasi jika diperlukan
+        // _rigidBody.freezeRotation = true;
     }
 
     private void Update()
     {
-        HandleAnimation();
-        MovementPlayer();
-    }
+        // Cek apakah objek menyentuh tanah
+        isGrounded = Physics.Raycast(transform.position, Vector3.down, 1.1f);
 
-
-    public void OnMove(InputAction.CallbackContext context)
-    {
-        move = context.ReadValue<Vector2>();
-    }
-
-    public void MovementPlayer()
-    {
-        Vector3 movement = new Vector3(move.x, 0f, move.y).normalized;
-
-        if (movement != Vector3.zero)
+        // Menangani input lompatan
+        if (isGrounded && Input.GetButtonDown("Jump"))
         {
-            Quaternion toRotation = Quaternion.LookRotation(movement, Vector3.up);
-            transform.rotation = Quaternion.Slerp(transform.rotation, toRotation, 0.15f);
+            _rigidBody.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
         }
-
-        float speed = animator.GetBool("IsRunning") ? runSpeed : walkSpeed;
-        characterController.Move(movement * speed * Time.deltaTime);
     }
 
+    private void FixedUpdate()
+    {
+        // Mendapatkan input horizontal dan vertikal
+        float moveHorizontal = Input.GetAxisRaw("Horizontal");
+        float moveVertical = Input.GetAxisRaw("Vertical");
+
+        // Membuat vektor gerakan di sumbu X dan Z
+        Vector3 movement = new Vector3(moveHorizontal, 0f, moveVertical).normalized;
+
+        // Set kecepatan langsung tanpa menggunakan gaya, lebih responsif
+        _rigidBody.velocity = new Vector3(movement.x * speed, _rigidBody.velocity.y, movement.z * speed);
+
+        //_rigidBody.velocity = new Vector3(moveHorizontal, _rigidBody.velocity.y, moveVertical) * speed;
+
+        // Cek apakah ada pergerakan
+        if (movement.magnitude > 0.1f)
+        {
+            // Hitung rotasi yang diinginkan
+            Quaternion targetRotation = Quaternion.LookRotation(movement, Vector3.up);
+
+            // Hitung rotasi baru dengan interpolasi untuk kelancaran
+            Quaternion newRotation = Quaternion.RotateTowards(_rigidBody.rotation, targetRotation, rotationSpeed * Time.fixedDeltaTime);
+
+            // Terapkan rotasi ke Rigidbody
+            _rigidBody.MoveRotation(newRotation);
+        }
+    }
 }
